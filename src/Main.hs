@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 
+import GHC.Generics
 import System.Environment (getArgs)
 import System.Exit
 import Data.Aeson
@@ -8,26 +9,41 @@ import Data.List
 import Distribution.Package
 import Distribution.PackageDescription
 import Distribution.PackageDescription.Parse
-import GHC.Generics
-import System.Directory (getDirectoryContents)
+import System.Directory (doesFileExist, findExecutable, getCurrentDirectory, getDirectoryContents)
 import System.FilePath.Posix
 import Hoogle (defaultDatabaseLocation, mergeDatabase)
 import Control.Applicative
+import System.Process
+import Control.Monad (filterM, liftM, unless)
+import System.IO (hGetContents)
+import Data.Maybe (isJust)
 
+
+-- TODOs:
+-- hoo-1 : use recent hoogle hackage dependency
+-- hoo-2 : add comments & clean up (split up main & Hoobudy)
+-- hoo-3 : actually use config file
+-- hoo-4 : use reader monad for config ?
 data Hoobuddy = Hoobuddy {
                            databases :: String
                          , useBase   :: Bool
                          , custom    :: [String]
                          } deriving (Generic, Show)
 
+
 instance ToJSON Hoobuddy
 instance FromJSON Hoobuddy
+
+type StdOut = String
+type StdErr = String
 
 confPath :: String
 confPath = "~/hoobuddy.conf"
 
-dbPath :: FilePath
-dbPath = "/home/gilligan/.cabal/share/x86_64-linux-ghc-7.8.2/hoogle-4.2.33/databases"
+hoogleMissingError :: String
+hoogleMissingError =
+    unlines [ "Error: hoogle is not installed or not in path"
+            , "Please install hoogle and run `hoogle data`"]
 
 basePackages :: [String]
 basePackages = words "Cabal.hoo array.hoo base.hoo binary.hoo bytestring.hoo containers.hoo deepseq.hoo directory.hoo filepath.hoo haskell2010.hoo haskell98.hoo hoopl.hoo hpc.hoo old-locale.hoo old-time.hoo pretty.hoo process.hoo template-haskell.hoo time.hoo unix.hoo"
@@ -46,6 +62,7 @@ help = putStrLn $
 
 main :: IO ()
 main = do
+    exitIfHoogleMissing
     conf <- loadConfig
     args <- getArgs
     run conf args where
@@ -56,61 +73,87 @@ main = do
             help
             exitWith (ExitFailure 1)
 
-unique :: (Ord a) => [a] -> [a]
-unique = map head . group . sort
+-- | Exits with error code if hoogle isn't installed
+exitIfHoogleMissing :: IO ()
+exitIfHoogleMissing = do
+    hoogleInstalled <- liftM isJust (findExecutable "hoogle")
+    unless hoogleInstalled (putStrLn hoogleMissingError >> exitWith (ExitFailure 1))
 
+
+-- | Loads configuration from file or creates&returns defaults
 loadConfig :: IO Hoobuddy
 loadConfig = decodeConfig >>= maybe defaultConfig return where
     defaultConfig = do
         location <- defaultDatabaseLocation
         return $ Hoobuddy location True []
 
+unique :: (Ord a) => [a] -> [a]
+unique = map head . group . sort
+
+-- | Encodes configuration to JSON
 encodeConfig :: Hoobuddy -> IO ()
 encodeConfig  = encodeFile confPath
 
+-- | Decodes configuration from JSON
 decodeConfig :: IO (Maybe Hoobuddy)
 decodeConfig = do
     parseResult <- decodeFileEither confPath
     return $ either (const Nothing) Just parseResult
 
+-- | Returns a list of available ".hoo" files
 getHooDatabases :: FilePath -> IO [String]
 getHooDatabases p = do
     files <- getDirectoryContents p
     return $ filter (\x -> ".hoo" `isSuffixOf`  x) files
 
-hoogleFetch :: String -> IO ()
-hoogleFetch [] = return ()
-hoogleFetch _ = error "Not implemented yet"
-
+-- | Calls hoogle to fetch all packages specified
+hoogleFetch :: [String] -> IO (Either (ExitCode, StdErr) StdOut)
+hoogleFetch [] = return (Right "No data to fetch")
+hoogleFetch pkgs =  do
+    (_, Just hOut, Just hErr, pHandle) <- createProcess (proc "hoogle" ("data":pkgNames)) {std_out = CreatePipe, std_err = CreatePipe}
+    exitCode <- waitForProcess pHandle
+    stdOut <- hGetContents hOut
+    stdErr <- hGetContents hErr
+    return (if exitCode == ExitSuccess then Right stdOut else Left (exitCode, stdErr))
+        where
+            pkgNames = dropExtension <$> pkgs
 
 build :: FilePath -> Hoobuddy -> IO ()
 build cabalFile _ = do
     pkgs <- map (++ ".hoo") <$> getDeps cabalFile
+    dbPath <- (<$>) (</> "databases") defaultDatabaseLocation
     dbs <- getHooDatabases dbPath
+
     let allPkgs = pkgs ++ basePackages ++ platformPackages
     let available = allPkgs `intersect` dbs
-
-    printInfo "Found databases for: " available
     let missing = filter (`notElem` available) allPkgs
-    printInfo "Missing databases for: " missing
-    sequence_ $ hoogleFetch <$> missing
+
+    printInfo "Fetching databases for: " missing
+    hoogleFetch missing >>= \x -> case x of
+        Right _             -> return ()
+        Left (code, stderr) -> putStrLn ("hoogle exited with error:\n" ++ stderr) >> exitWith code
+
+    -- TODO: Process files sequentially
+    -- forM_ files $ \f -> doesFileExist f >>= bool (return ()) doSomething
+    -- note : use when instead of bool
 
     putStrLn "Merging databases ..."
-    mergeDatabase  (map (dbPath </>) allPkgs) "/tmp/test.hoo"
+    currDir <- getCurrentDirectory
+    existingDbs <- filterM doesFileExist (fmap (dbPath </>) allPkgs)
+    mergeDatabase  existingDbs (currDir </> "default.hoo")
 
-    return ()
-        where
-            printInfo :: String -> [String] -> IO ()
-            printInfo _ [] = return ()
-            printInfo str xs = putStrLn $ str ++ "[" ++ intercalate "," xs ++ "]"
+-- | Pretty printer for info output
+printInfo :: String -> [String] -> IO ()
+printInfo _ [] = return ()
+printInfo str xs = putStrLn $ str ++ "[" ++ intercalate "," xs ++ "]"
 
-
+-- | Prints dependencies from cabal file
 deps :: FilePath -> IO ()
 deps  path = do
         pkgs <- getDeps path
         putStrLn $ unlines pkgs
 
-
+-- | Returns list of dependencies from cabal file
 getDeps :: FilePath -> IO [String]
 getDeps cabal = do
         contents <- readFile cabal
