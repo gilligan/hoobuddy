@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 import GHC.Generics
 import System.Environment (getArgs)
@@ -6,17 +7,14 @@ import System.Exit
 import Data.Aeson
 import Data.Yaml
 import Data.List
-import Distribution.Package
-import Distribution.PackageDescription
-import Distribution.PackageDescription.Parse
-import System.Directory (doesFileExist, findExecutable, getCurrentDirectory, getDirectoryContents)
+import System.Directory (doesFileExist, findExecutable, getCurrentDirectory)
 import System.FilePath.Posix
 import Hoogle (defaultDatabaseLocation, mergeDatabase)
 import Control.Applicative
-import System.Process
 import Control.Monad (filterM, liftM, unless)
-import System.IO (hGetContents)
 import Data.Maybe (isJust)
+
+import Hoobuddy
 
 
 -- TODOs:
@@ -24,18 +22,11 @@ import Data.Maybe (isJust)
 -- hoo-2 : add comments & clean up (split up main & Hoobudy)
 -- hoo-3 : actually use config file
 -- hoo-4 : use reader monad for config ?
-data Hoobuddy = Hoobuddy {
-                           databases :: String
-                         , useBase   :: Bool
-                         , custom    :: [String]
-                         } deriving (Generic, Show)
-
-
+deriving instance Generic Hoobuddy
 instance ToJSON Hoobuddy
 instance FromJSON Hoobuddy
 
-type StdOut = String
-type StdErr = String
+
 
 confPath :: String
 confPath = "~/hoobuddy.conf"
@@ -100,23 +91,6 @@ decodeConfig = do
     parseResult <- decodeFileEither confPath
     return $ either (const Nothing) Just parseResult
 
--- | Returns a list of available ".hoo" files
-getHooDatabases :: FilePath -> IO [String]
-getHooDatabases p = do
-    files <- getDirectoryContents p
-    return $ filter (\x -> ".hoo" `isSuffixOf`  x) files
-
--- | Calls hoogle to fetch all packages specified
-hoogleFetch :: [String] -> IO (Either (ExitCode, StdErr) StdOut)
-hoogleFetch [] = return (Right "No data to fetch")
-hoogleFetch pkgs =  do
-    (_, Just hOut, Just hErr, pHandle) <- createProcess (proc "hoogle" ("data":pkgNames)) {std_out = CreatePipe, std_err = CreatePipe}
-    exitCode <- waitForProcess pHandle
-    stdOut <- hGetContents hOut
-    stdErr <- hGetContents hErr
-    return (if exitCode == ExitSuccess then Right stdOut else Left (exitCode, stdErr))
-        where
-            pkgNames = dropExtension <$> pkgs
 
 build :: FilePath -> Hoobuddy -> IO ()
 build cabalFile _ = do
@@ -147,29 +121,4 @@ printInfo :: String -> [String] -> IO ()
 printInfo _ [] = return ()
 printInfo str xs = putStrLn $ str ++ "[" ++ intercalate "," xs ++ "]"
 
--- | Prints dependencies from cabal file
-deps :: FilePath -> IO ()
-deps  path = do
-        pkgs <- getDeps path
-        putStrLn $ unlines pkgs
 
--- | Returns list of dependencies from cabal file
-getDeps :: FilePath -> IO [String]
-getDeps cabal = do
-        contents <- readFile cabal
-        let depInfo = parsePackageDescription contents
-        case depInfo of
-            ParseFailed _ -> exitWith (ExitFailure 1)
-            ParseOk _ d     -> return (packageNames $ extractDeps d)
-        where
-            packageNames :: [Dependency] -> [String]
-            packageNames  = map (init . tail . head . tail . words . show . pkg)
-            pkg :: Dependency -> PackageName
-            pkg (Dependency x _) = x
-
-extractDeps :: GenericPackageDescription -> [Dependency]
-extractDeps d = ldeps ++ edeps
-  where ldeps = case condLibrary d of
-                Nothing -> []
-                Just c -> condTreeConstraints c
-        edeps = concatMap (condTreeConstraints . snd) $ condExecutables d
