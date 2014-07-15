@@ -4,7 +4,7 @@
 import GHC.Generics
 import System.Environment (getArgs)
 import System.Exit
-import Data.Aeson
+import Data.Aeson hiding (encode)
 import Data.Yaml
 import Data.List
 import System.Directory (doesFileExist, findExecutable, getCurrentDirectory, getHomeDirectory)
@@ -44,7 +44,9 @@ help = putStrLn $
             , ""
             , "deps         list configured dependencies"
             , "build        do stuff yet to be defined"
+            , ""
             , "--default    prints the default configuration"
+            , "--help       prints this help"
             ]
 
 main :: IO ()
@@ -56,7 +58,7 @@ main = do
         run _ ["deps", file]          = deps file
         run conf  ["build", file]     = build file conf
         run _ ["--help"]              = help
-        run _ ["--default"]           = defaultConf
+        run _ ["--default"]           = defaultConfig >>= \x -> putStrLn $ unpack $ encode x
         run _ _ = do
             help
             exitWith (ExitFailure 1)
@@ -70,20 +72,15 @@ exitIfHoogleMissing = do
 
 -- | Loads configuration from file or uses defaults
 loadConfig :: IO Hoobuddy
-loadConfig = decodeConfig >>= maybe defaultConfig return where
-    defaultConfig = do
-        location <- defaultDatabaseLocation
-        return $ Hoobuddy location True []
+loadConfig = decodeConfig >>= maybe defaultConfig return
 
 unique :: (Ord a) => [a] -> [a]
 unique = map head . group . sort
 
-defaultConf :: IO ()
-defaultConf = encodeConfig $ Hoobuddy "" True ["foo", "bar"]
-
-
-encodeConfig :: Hoobuddy -> IO ()
-encodeConfig h = putStrLn $ unpack $ Data.Yaml.encode h
+defaultConfig :: IO Hoobuddy
+defaultConfig = do
+    location <- defaultDatabaseLocation
+    return $ Hoobuddy location True []
 
 -- | Decodes configuration from JSON
 decodeConfig :: IO (Maybe Hoobuddy)

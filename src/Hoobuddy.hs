@@ -16,7 +16,7 @@ data Hoobuddy = Hoobuddy {
                            databases :: String
                          , useBase   :: Bool
                          , custom    :: [String]
-                         }
+                         } deriving (Show)
 
 type StdOut = String
 type StdErr = String
