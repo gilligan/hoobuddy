@@ -23,6 +23,7 @@ executable hoobuddy
                      , yaml
                      , hoogle >= 4.2.34
                      , process
+                     , bytestring
 
 
   default-language:    Haskell2010

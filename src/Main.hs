@@ -7,7 +7,7 @@ import System.Exit
 import Data.Aeson
 import Data.Yaml
 import Data.List
-import System.Directory (doesFileExist, findExecutable, getCurrentDirectory)
+import System.Directory (doesFileExist, findExecutable, getCurrentDirectory, getHomeDirectory)
 import System.FilePath.Posix
 import Hoogle (defaultDatabaseLocation, mergeDatabase)
 import Control.Applicative
@@ -15,40 +15,36 @@ import Control.Monad (filterM, liftM, unless)
 import Data.Maybe (isJust)
 
 import Hoobuddy
+import Data.ByteString.Char8 (unpack)
 
 
 -- TODOs:
--- hoo-1 : use recent hoogle hackage dependency
--- hoo-2 : add comments & clean up (split up main & Hoobudy)
--- hoo-3 : actually use config file
+-- hoo-3 : actually use config file (change properties!)
 -- hoo-4 : use reader monad for config ?
+-- hoo-5 : add switch to output default configuration
+
 deriving instance Generic Hoobuddy
 instance ToJSON Hoobuddy
 instance FromJSON Hoobuddy
 
-
-
-confPath :: String
-confPath = "~/hoobuddy.conf"
 
 hoogleMissingError :: String
 hoogleMissingError =
     unlines [ "Error: hoogle is not installed or not in path"
             , "Please install hoogle and run `hoogle data`"]
 
-basePackages :: [String]
-basePackages = words "Cabal.hoo array.hoo base.hoo binary.hoo bytestring.hoo containers.hoo deepseq.hoo directory.hoo filepath.hoo haskell2010.hoo haskell98.hoo hoopl.hoo hpc.hoo old-locale.hoo old-time.hoo pretty.hoo process.hoo template-haskell.hoo time.hoo unix.hoo"
-
-platformPackages :: [String]
-platformPackages = words "GLURaw.hoo GLUT.hoo HTTP.hoo HUnit.hoo OpenGL.hoo OpenGLRaw.hoo QuickCheck.hoo async.hoo attoparsec.hoo case-insensitive.hoo cgi.hoo fgl.hoo hashable.hoo haskell-src.hoo html.hoo mtl.hoo network.hoo parallel.hoo parsec.hoo primitive.hoo random.hoo regex-base.hoo regex-compat.hoo regex-posix.hoo split.hoo stm.hoo syb.hoo text.hoo transformers.hoo unordered-containers.hoo vector.hoo xhtml.hoo zlib.hoo"
+defaultPkgs :: [String]
+defaultPkgs = words "Cabal.hoo array.hoo base.hoo binary.hoo bytestring.hoo containers.hoo deepseq.hoo directory.hoo filepath.hoo haskell2010.hoo haskell98.hoo hoopl.hoo hpc.hoo old-locale.hoo old-time.hoo pretty.hoo process.hoo template-haskell.hoo time.hoo unix.hoo GLURaw.hoo GLUT.hoo HTTP.hoo HUnit.hoo OpenGL.hoo OpenGLRaw.hoo QuickCheck.hoo async.hoo attoparsec.hoo case-insensitive.hoo cgi.hoo fgl.hoo hashable.hoo haskell-src.hoo html.hoo mtl.hoo network.hoo parallel.hoo parsec.hoo primitive.hoo random.hoo regex-base.hoo regex-compat.hoo regex-posix.hoo split.hoo stm.hoo syb.hoo text.hoo transformers.hoo unordered-containers.hoo vector.hoo xhtml.hoo zlib.hoo"
 
 help :: IO ()
 help = putStrLn $
     unlines [ "Usage : hoobuddy [deps|build]"
             , "                 [--help]"
+            , "                 [--default]"
             , ""
             , "deps         list configured dependencies"
             , "build        do stuff yet to be defined"
+            , "--default    prints the default configuration"
             ]
 
 main :: IO ()
@@ -60,6 +56,7 @@ main = do
         run _ ["deps", file]          = deps file
         run conf  ["build", file]     = build file conf
         run _ ["--help"]              = help
+        run _ ["--default"]           = defaultConf
         run _ _ = do
             help
             exitWith (ExitFailure 1)
@@ -71,7 +68,7 @@ exitIfHoogleMissing = do
     unless hoogleInstalled (putStrLn hoogleMissingError >> exitWith (ExitFailure 1))
 
 
--- | Loads configuration from file or creates&returns defaults
+-- | Loads configuration from file or uses defaults
 loadConfig :: IO Hoobuddy
 loadConfig = decodeConfig >>= maybe defaultConfig return where
     defaultConfig = do
@@ -81,14 +78,18 @@ loadConfig = decodeConfig >>= maybe defaultConfig return where
 unique :: (Ord a) => [a] -> [a]
 unique = map head . group . sort
 
--- | Encodes configuration to JSON
+defaultConf :: IO ()
+defaultConf = encodeConfig $ Hoobuddy "" True ["foo", "bar"]
+
+
 encodeConfig :: Hoobuddy -> IO ()
-encodeConfig  = encodeFile confPath
+encodeConfig h = putStrLn $ unpack $ Data.Yaml.encode h
 
 -- | Decodes configuration from JSON
 decodeConfig :: IO (Maybe Hoobuddy)
 decodeConfig = do
-    parseResult <- decodeFileEither confPath
+    homeDir <- getHomeDirectory
+    parseResult <- decodeFileEither $ homeDir </> ".hoobuddy.conf"
     return $ either (const Nothing) Just parseResult
 
 
@@ -98,7 +99,7 @@ build cabalFile _ = do
     dbPath <- (<$>) (</> "databases") defaultDatabaseLocation
     dbs <- getHooDatabases dbPath
 
-    let allPkgs = pkgs ++ basePackages ++ platformPackages
+    let allPkgs = pkgs ++ defaultPkgs
     let available = allPkgs `intersect` dbs
     let missing = filter (`notElem` available) allPkgs
 
