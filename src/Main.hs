@@ -19,7 +19,6 @@ import Data.ByteString.Char8 (unpack)
 
 
 -- TODOs:
--- hoo-3 : actually use config file (change properties!)
 -- hoo-4 : use reader monad for config ?
 -- hoo-5 : add switch to output default configuration
 
@@ -80,7 +79,7 @@ unique = map head . group . sort
 defaultConfig :: IO Hoobuddy
 defaultConfig = do
     location <- defaultDatabaseLocation
-    return $ Hoobuddy location True []
+    return $ Hoobuddy (location </> "databases") True []
 
 -- | Decodes configuration from JSON
 decodeConfig :: IO (Maybe Hoobuddy)
@@ -91,12 +90,11 @@ decodeConfig = do
 
 
 build :: FilePath -> Hoobuddy -> IO ()
-build cabalFile _ = do
+build cabalFile conf = do
     pkgs <- map (++ ".hoo") <$> getDeps cabalFile
-    dbPath <- (<$>) (</> "databases") defaultDatabaseLocation
-    dbs <- getHooDatabases dbPath
+    dbs <- getHooDatabases (databases conf)
 
-    let allPkgs = pkgs ++ defaultPkgs
+    let allPkgs = (if (useBase conf) then pkgs ++ defaultPkgs else pkgs) ++ (custom conf)
     let available = allPkgs `intersect` dbs
     let missing = filter (`notElem` available) allPkgs
 
@@ -105,13 +103,9 @@ build cabalFile _ = do
         Right _             -> return ()
         Left (code, stderr) -> putStrLn ("hoogle exited with error:\n" ++ stderr) >> exitWith code
 
-    -- TODO: Process files sequentially
-    -- forM_ files $ \f -> doesFileExist f >>= bool (return ()) doSomething
-    -- note : use when instead of bool
-
     putStrLn "Merging databases ..."
     currDir <- getCurrentDirectory
-    existingDbs <- filterM doesFileExist (fmap (dbPath </>) allPkgs)
+    existingDbs <- filterM doesFileExist (fmap (databases conf </>) allPkgs)
     mergeDatabase  existingDbs (currDir </> "default.hoo")
 
 -- | Pretty printer for info output
