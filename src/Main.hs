@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 import GHC.Generics
 import System.Environment (getArgs)
@@ -94,7 +95,7 @@ build cabalFile conf = do
     pkgs <- map (++ ".hoo") <$> getDeps cabalFile
     dbs <- getHooDatabases (databases conf)
 
-    let allPkgs = (if (useBase conf) then pkgs ++ defaultPkgs else pkgs) ++ (custom conf)
+    let allPkgs = (++) pkgs (if useBase conf then defaultPkgs else custom conf)
     let available = allPkgs `intersect` dbs
     let missing = filter (`notElem` available) allPkgs
 
