@@ -9,7 +9,7 @@ license-file:        LICENSE
 author:              tobias pflug
 maintainer:          tobias.pflug@gmail.com
 homepage:            http://github.com/gilligan/hoobuddy
-category:            System
+category:            Development
 build-type:          Simple
 cabal-version:       >=1.10
 
