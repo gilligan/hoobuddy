@@ -1,11 +1,14 @@
 name:                hoobuddy
 version:             0.1.0.0
-synopsis:            Tool for building hoogle data
-description:         Tool for building hoogle data
+synopsis:            Simple tool for fetching and merging hoogle data
+description:
+ Hoobuddy parses the specified cabal project file and invokes hoogle to fetch databases for
+ all specified dependencies merging the result into a `default.hoo` file in the current directory.
 license:             MIT
 license-file:        LICENSE
 author:              tobias pflug
 maintainer:          tobias.pflug@gmail.com
+homepage:            http://github.com/gilligan/hoobuddy
 category:            System
 build-type:          Simple
 cabal-version:       >=1.10
