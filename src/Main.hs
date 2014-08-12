@@ -21,7 +21,6 @@ import Data.ByteString.Char8 (unpack)
 
 -- TODOs:
 -- hoo-4 : use reader monad for config ?
--- hoo-5 : add switch to output default configuration
 
 deriving instance Generic Hoobuddy
 instance ToJSON Hoobuddy
@@ -38,7 +37,7 @@ defaultPkgs = words "Cabal.hoo array.hoo base.hoo binary.hoo bytestring.hoo cont
 
 help :: IO ()
 help = putStrLn $
-    unlines [ "Usage : hoobuddy [deps|build]"
+    unlines [ "Usage : hoobuddy [deps|build] <cabal-file>"
             , "                 [--help]"
             , "                 [--default]"
             , ""
