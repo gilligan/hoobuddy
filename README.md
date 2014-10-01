@@ -26,12 +26,12 @@ Alternatively you may want to install hoobuddy in a sandbox and copy the binary 
 
 When run without arguments hoobuddy prints the help:
 
-    Usage : hoobuddy [deps|build] <cabal-file>
+    Usage : hoobuddy [deps|fetch] <cabal-file>
                      [--help]
                      [--default]
 
     deps         list configured dependencies
-    build        do stuff yet to be defined
+    fetch        do stuff yet to be defined
 
     --default    prints the default configuration
     --help       prints this help
