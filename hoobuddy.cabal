@@ -1,5 +1,5 @@
 name:                hoobuddy
-version:             0.1.0.0
+version:             0.1.0.1
 synopsis:            Simple tool for fetching and merging hoogle data
 description:
  Hoobuddy parses the specified cabal project file and invokes hoogle to fetch databases for
@@ -20,6 +20,7 @@ source-repository head
 executable hoobuddy
   hs-source-dirs:      src
   main-is:             Main.hs
+  other-modules:       Hoobuddy
   ghc-options:         -fwarn-incomplete-patterns
   build-depends:       base >=4.7 && <4.8
                      , Cabal
