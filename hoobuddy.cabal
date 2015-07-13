@@ -22,7 +22,7 @@ executable hoobuddy
   main-is:             Main.hs
   other-modules:       Hoobuddy
   ghc-options:         -fwarn-incomplete-patterns
-  build-depends:       base >=4.7 && <4.8
+  build-depends:       base >=4.7 && <4.9
                      , Cabal
                      , directory
                      , filepath
